@@ -29,7 +29,7 @@ export const createRawRecord = async (req, res) => {
     );
     const rawEntry = rawInsert.rows[0];
 
-    const flaskRes = await axios.post('http://127.0.0.1:5000/parse-text', { raw_text, date });
+    const flaskRes = await axios.post('https://lazyledger-parser.onrender.com/parse-text', { raw_text, date });
     if (flaskRes.status !== 200) {
       return res.status(500).json({ error: 'Failed to process text with Flask service' });
     }
