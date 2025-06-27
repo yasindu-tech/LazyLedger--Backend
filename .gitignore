@@ -1,0 +1,23 @@
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Service Account and API Keys
+path-to-service-account.json
+serviceAccount.json
+service-account.json
+*.json.key
+*-key.json
+*-credentials.json
+
+# Logs
+npm-debug.log*
+
+# IDE specific files
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
