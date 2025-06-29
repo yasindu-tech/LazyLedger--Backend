@@ -29,7 +29,20 @@ export const createRawRecord = async (req, res) => {
     );
     const rawEntry = rawInsert.rows[0];
 
-    const flaskRes = await axios.post('https://lazyledger-parser.onrender.com/parse-text', { raw_text, date });
+    console.log('Calling Flask service for text parsing...');
+    
+    // Call Flask service with extended timeout (2 minutes) to handle cold start
+    const flaskRes = await axios.post('https://lazyledger-parser.onrender.com/parse-text', 
+      { raw_text, date }, 
+      { 
+        timeout: 120000, // 2 minutes timeout
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    console.log('Flask service responded with status:', flaskRes.status);
     if (flaskRes.status !== 200) {
       return res.status(500).json({ error: 'Failed to process text with Flask service' });
     }
@@ -72,7 +85,13 @@ export const createRawRecord = async (req, res) => {
     console.error('Error creating raw record:', error);
     
     // Check if it's an axios error (Flask service issue)
-    if (error.response) {
+    if (error.code === 'ECONNABORTED') {
+      return res.status(408).json({ 
+        error: 'Flask service timeout', 
+        details: 'The parsing service took too long to respond. This might be due to cold start. Please try again.',
+        timeout: true
+      });
+    } else if (error.response) {
       return res.status(500).json({ 
         error: 'Flask service error', 
         details: error.response.data || error.message,
@@ -81,7 +100,7 @@ export const createRawRecord = async (req, res) => {
     } else if (error.request) {
       return res.status(500).json({ 
         error: 'Failed to connect to Flask service', 
-        details: 'No response received from parsing service' 
+        details: 'No response received from parsing service. The service might be starting up.' 
       });
     } else {
       return res.status(500).json({ 
