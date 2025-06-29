@@ -10,7 +10,7 @@ export const getAllRawRecords = async (req,res) => {
     }
     catch (error) {
         console.error('Error fetching raw records:', error);
-        return res.status(500).json({ error: 'Internal Server Error' });
+        return res.status(500).json({ error: 'Failed to fetch raw records', details: error.message });
     }
 }
 
@@ -70,7 +70,25 @@ export const createRawRecord = async (req, res) => {
 
   } catch (error) {
     console.error('Error creating raw record:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    
+    // Check if it's an axios error (Flask service issue)
+    if (error.response) {
+      return res.status(500).json({ 
+        error: 'Flask service error', 
+        details: error.response.data || error.message,
+        statusCode: error.response.status 
+      });
+    } else if (error.request) {
+      return res.status(500).json({ 
+        error: 'Failed to connect to Flask service', 
+        details: 'No response received from parsing service' 
+      });
+    } else {
+      return res.status(500).json({ 
+        error: 'Failed to create raw record', 
+        details: error.message 
+      });
+    }
   }
 };
 
@@ -86,7 +104,10 @@ export const deleteRawRecord = async (req, res) => {
         return res.status(200).json({ message: 'Record deleted successfully' });
     } catch (error) {
         console.error('Error deleting raw record:', error);
-        return res.status(500).json({ error: 'Internal Server Error' });
+        return res.status(500).json({ 
+            error: 'Failed to delete raw record', 
+            details: error.message 
+        });
     }
 }
 
@@ -100,7 +121,10 @@ export const getlastRawRecordDate = async (req, res) => {
         return res.status(200).json(result.rows[0].timestamp);
     } catch (error) {
         console.error('Error fetching last raw record:', error);
-        return res.status(500).json({ error: 'Internal Server Error' });
+        return res.status(500).json({ 
+            error: 'Failed to fetch last raw record', 
+            details: error.message 
+        });
     }
 }
 
