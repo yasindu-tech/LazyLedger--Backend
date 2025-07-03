@@ -30,6 +30,8 @@ export const createRawRecord = async (req, res) => {
     const rawEntry = rawInsert.rows[0];
 
     console.log('Calling Flask service for text parsing...');
+    console.log('Flask service URL: https://lazyledger-parser.onrender.com/parse-text');
+    console.log('Request payload size:', JSON.stringify({ raw_text, date }).length, 'bytes');
     
     // Call Flask service with extended timeout (2 minutes) to handle cold start
     const flaskRes = await axios.post('https://lazyledger-parser.onrender.com/parse-text', 
@@ -43,6 +45,8 @@ export const createRawRecord = async (req, res) => {
     );
     
     console.log('Flask service responded with status:', flaskRes.status);
+    console.log('Response data type:', typeof flaskRes.data);
+    console.log('Response data preview:', JSON.stringify(flaskRes.data).substring(0, 200));
     if (flaskRes.status !== 200) {
       return res.status(500).json({ error: 'Failed to process text with Flask service' });
     }
@@ -92,11 +96,24 @@ export const createRawRecord = async (req, res) => {
         timeout: true
       });
     } else if (error.response) {
-      return res.status(500).json({ 
-        error: 'Flask service error', 
-        details: error.response.data || error.message,
-        statusCode: error.response.status 
-      });
+      // Check if we got HTML instead of JSON (502/503 errors from Render)
+      const isHtmlResponse = typeof error.response.data === 'string' && 
+                            error.response.data.includes('<!DOCTYPE html>');
+      
+      if (isHtmlResponse) {
+        return res.status(503).json({ 
+          error: 'Flask service unavailable', 
+          details: `The parsing service is currently unavailable (HTTP ${error.response.status}). Please try again in a few minutes.`,
+          statusCode: error.response.status,
+          serviceDown: true
+        });
+      } else {
+        return res.status(500).json({ 
+          error: 'Flask service error', 
+          details: error.response.data || error.message,
+          statusCode: error.response.status 
+        });
+      }
     } else if (error.request) {
       return res.status(500).json({ 
         error: 'Failed to connect to Flask service', 
