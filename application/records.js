@@ -33,6 +33,18 @@ export const createRawRecord = async (req, res) => {
     console.log('Flask service URL: https://lazyledger-parser.onrender.com/parse-text');
     console.log('Request payload size:', JSON.stringify({ raw_text, date }).length, 'bytes');
     
+    // First, wake up the Flask service with a health check
+    console.log('Waking up Flask service...');
+    try {
+      await axios.get('https://lazyledger-parser.onrender.com/health', { 
+        timeout: 30000 // 30 seconds for wake up
+      });
+      console.log('Flask service is awake');
+    } catch (wakeUpError) {
+      console.log('Wake up attempt completed (service may still be starting)');
+      // Continue anyway, the main request will handle any remaining startup time
+    }
+    
     // Call Flask service with extended timeout (2 minutes) to handle cold start
     const flaskRes = await axios.post('https://lazyledger-parser.onrender.com/parse-text', 
       { raw_text, date }, 
