@@ -30,11 +30,11 @@ export const createRawRecord = async (req, res) => {
     const rawEntry = rawInsert.rows[0];
 
     console.log('Calling Flask service for text parsing...');
-    console.log('Flask service URL: https://lazyledger-parser.onrender.com/parse-text');
+    console.log('Flask service URL: https://lazyledger-parser-production.up.railway.app/parse-text');
     console.log('Request payload size:', JSON.stringify({ raw_text, date }).length, 'bytes');
     
     // Call Flask service with extended timeout (2 minutes) to handle cold start
-    const flaskRes = await axios.post('https://lazyledger-parser.onrender.com/parse-text', 
+    const flaskRes = await axios.post('https://lazyledger-parser-production.up.railway.app/parse-text', 
       { raw_text, date }, 
       { 
         timeout: 120000, // 2 minutes timeout
