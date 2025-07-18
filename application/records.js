@@ -32,6 +32,7 @@ export const createRawRecord = async (req, res) => {
     console.log('Calling Flask service for text parsing...');
     console.log('Flask service URL: https://lazyledger-parser-production.up.railway.app/parse-text');
     console.log('Request payload size:', JSON.stringify({ raw_text, date }).length, 'bytes');
+    console.log('Current time:', new Date().toISOString());
     
     // Call Flask service with extended timeout (2 minutes) to handle cold start
     const flaskRes = await axios.post('https://lazyledger-parser-production.up.railway.app/parse-text', 
@@ -106,11 +107,25 @@ export const createRawRecord = async (req, res) => {
         });
       }
       
-      // Check if we got HTML instead of JSON (502/503 errors from Render)
+      // Check if we got HTML instead of JSON (502/503 errors from hosting providers)
       const isHtmlResponse = typeof error.response.data === 'string' && 
                             error.response.data.includes('<!DOCTYPE html>');
       
-      if (isHtmlResponse) {
+      // Check for Railway-specific errors (JSON response with error details)
+      const isRailwayError = error.response.data && 
+                            typeof error.response.data === 'object' && 
+                            error.response.data.status === 'error';
+      
+      if (isRailwayError) {
+        return res.status(503).json({ 
+          error: 'Flask service unavailable on Railway', 
+          details: `Railway error: ${error.response.data.message || 'Application failed to respond'}. The Flask service may be starting up or crashed.`,
+          statusCode: error.response.status,
+          serviceDown: true,
+          railwayError: true,
+          requestId: error.response.data.request_id
+        });
+      } else if (isHtmlResponse) {
         return res.status(503).json({ 
           error: 'Flask service unavailable', 
           details: `The parsing service is currently unavailable (HTTP ${error.response.status}). Please try again in a few minutes.`,
