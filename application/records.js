@@ -72,6 +72,22 @@ export const createRawRecord = async (req, res) => {
       } catch (err) {
         retryCount++;
         
+        // Enhanced detailed error logging
+        console.error('Flask service request error:', {
+          attempt: retryCount,
+          errorCode: err.code || 'unknown',
+          errorType: err.name,
+          errorMessage: err.message,
+          timestamp: new Date().toISOString(),
+          requestPayloadSize: JSON.stringify({ raw_text, date }).length,
+          url: FLASK_SERVICE_CONFIG.URL,
+          responseStatus: err.response?.status,
+          responseStatusText: err.response?.statusText,
+          hasResponse: !!err.response,
+          hasRequest: !!err.request,
+          stack: err.stack
+        });
+        
         // If it's a connection reset or network error and we have retries left
         if ((err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || !err.response) && retryCount < MAX_RETRIES) {
           const delayMs = FLASK_SERVICE_CONFIG.RETRY_DELAY_BASE_MS * retryCount; // Exponential backoff
