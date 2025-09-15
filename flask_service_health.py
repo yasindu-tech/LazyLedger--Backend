@@ -1,6 +1,7 @@
 """
 Health check endpoint for LazyLedger Parser service.
 This file provides a simple health check endpoint to verify the service is running.
+Add this file to your Flask parser service on Render.
 """
 
 from flask import Blueprint, jsonify
@@ -23,7 +24,8 @@ def health_check():
         'environment': {
             'python_version': sys.version,
             'platform': platform.platform(),
-            'process_id': os.getpid()
+            'process_id': os.getpid(),
+            'hosting': 'Render'
         }
     }
     

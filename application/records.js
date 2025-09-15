@@ -4,7 +4,7 @@ import axios from 'axios';
 
 // Configuration for Flask service connection
 const FLASK_SERVICE_CONFIG = {
-  URL: 'https://lazyledger-parser-production.up.railway.app/parse-text',
+  URL: 'https://lazyledger-parser.onrender.com/parse-text',
   TIMEOUT_MS: 120000, // 2 minutes
   MAX_RETRIES: 3,
   RETRY_DELAY_BASE_MS: 2000, // Base delay for exponential backoff
@@ -174,6 +174,11 @@ export const createRawRecord = async (req, res) => {
       const isRailwayError = error.response.data && 
                             typeof error.response.data === 'object' && 
                             error.response.data.status === 'error';
+                            
+      // Check for Render-specific errors
+      const isRenderError = typeof error.response.data === 'string' && 
+                            (error.response.data.includes('Application Error') ||
+                             error.response.data.includes('Render Error'));
       
       // Enhanced error logging for HTTP response errors
       console.error('Flask service HTTP error:', {
@@ -186,6 +191,7 @@ export const createRawRecord = async (req, res) => {
           : error.response.data,
         isHtmlResponse: typeof error.response.data === 'string' && error.response.data.includes('<!DOCTYPE html>'),
         isRailwayError: isRailwayError,
+        isRenderError: isRenderError,
         requestConfig: {
           url: error.config?.url,
           method: error.config?.method,
@@ -193,7 +199,15 @@ export const createRawRecord = async (req, res) => {
         }
       });
       
-      if (isRailwayError) {
+      if (isRenderError) {
+        return res.status(503).json({ 
+          error: 'Flask service unavailable on Render', 
+          details: 'The Flask service on Render is currently unavailable. It may be in a suspended state or starting up.',
+          statusCode: error.response.status,
+          serviceDown: true,
+          renderError: true
+        });
+      } else if (isRailwayError) {
         return res.status(503).json({ 
           error: 'Flask service unavailable on Railway', 
           details: `Railway error: ${error.response.data.message || 'Application failed to respond'}. The Flask service may be starting up or crashed.`,
