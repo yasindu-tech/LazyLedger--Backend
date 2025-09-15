@@ -34,29 +34,7 @@ export const createRawRecord = async (req, res) => {
     const rawInsert = await pool.query(
       'INSERT INTO raw_entries (user_id, date, raw_text) VALUES ($1, $2, $3) RETURNING *',
       [user_id, date, raw_text]
-    ).catch(dbError => {
-      // Enhanced PostgreSQL error logging
-      console.error('Database query error in createRawRecord:', {
-        errorCode: dbError.code,
-        errorMessage: dbError.message,
-        detail: dbError.detail,
-        hint: dbError.hint,
-        position: dbError.position,
-        sqlState: dbError.sqlState,
-        queryText: 'INSERT INTO raw_entries (user_id, date, raw_text) VALUES ($1, $2, $3) RETURNING *',
-        timestamp: new Date().toISOString(),
-        stack: dbError.stack
-      });
-      
-      // Re-throw to be caught by the outer catch
-      throw {
-        ...dbError,
-        isDbError: true,
-        operation: 'insert',
-        table: 'raw_entries'
-      };
-    });
-    
+    );
     const rawEntry = rawInsert.rows[0];
 
     console.log('Calling Flask service for text parsing...');
@@ -163,27 +141,6 @@ export const createRawRecord = async (req, res) => {
   } catch (error) {
     console.error('Error creating raw record:', error);
     
-    // Handle database-specific errors
-    if (error.isDbError || error.code === 'ECONNRESET' && error.syscall === 'read') {
-      // This is a database connection error
-      console.error('Database connection error:', {
-        errorCode: error.code,
-        errorMessage: error.message,
-        syscall: error.syscall,
-        errno: error.errno,
-        timestamp: new Date().toISOString(),
-        stack: error.stack,
-        isPoolError: error.message && error.message.includes('pg-pool')
-      });
-      
-      return res.status(503).json({
-        error: 'Database connection error',
-        details: 'The connection to the database was lost or reset. This could be due to database restarts or network issues. Please try again.',
-        errorCode: error.code,
-        databaseError: true
-      });
-    }
-    
     // Check if it's an axios error (Flask service issue)
     if (error.code === 'ECONNABORTED') {
       return res.status(408).json({ 
@@ -217,11 +174,6 @@ export const createRawRecord = async (req, res) => {
       const isRailwayError = error.response.data && 
                             typeof error.response.data === 'object' && 
                             error.response.data.status === 'error';
-                            
-      // Check for Render-specific errors
-      const isRenderError = typeof error.response.data === 'string' && 
-                            (error.response.data.includes('Application Error') ||
-                             error.response.data.includes('Render Error'));
       
       // Enhanced error logging for HTTP response errors
       console.error('Flask service HTTP error:', {
@@ -234,7 +186,6 @@ export const createRawRecord = async (req, res) => {
           : error.response.data,
         isHtmlResponse: typeof error.response.data === 'string' && error.response.data.includes('<!DOCTYPE html>'),
         isRailwayError: isRailwayError,
-        isRenderError: isRenderError,
         requestConfig: {
           url: error.config?.url,
           method: error.config?.method,
@@ -242,15 +193,7 @@ export const createRawRecord = async (req, res) => {
         }
       });
       
-      if (isRenderError) {
-        return res.status(503).json({ 
-          error: 'Flask service unavailable on Render', 
-          details: 'The Flask service on Render is currently unavailable. It may be in a suspended state or starting up.',
-          statusCode: error.response.status,
-          serviceDown: true,
-          renderError: true
-        });
-      } else if (isRailwayError) {
+      if (isRailwayError) {
         return res.status(503).json({ 
           error: 'Flask service unavailable on Railway', 
           details: `Railway error: ${error.response.data.message || 'Application failed to respond'}. The Flask service may be starting up or crashed.`,

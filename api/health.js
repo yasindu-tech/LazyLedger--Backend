@@ -36,7 +36,7 @@ healthRouter.get("/", async (req, res) => {
       // Use a simple ping/health endpoint if available, or create one in your Flask app
       // For now, we'll use a short timeout to avoid long waits
       const flaskResponse = await axios.get(
-        "https://lazyledger-parser-production.up.railway.app/health",
+  "https://lazyledger-parser.onrender.com/health",
         { timeout: 5000 }
       );
       
