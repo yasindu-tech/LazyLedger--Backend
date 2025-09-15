@@ -175,6 +175,24 @@ export const createRawRecord = async (req, res) => {
                             typeof error.response.data === 'object' && 
                             error.response.data.status === 'error';
       
+      // Enhanced error logging for HTTP response errors
+      console.error('Flask service HTTP error:', {
+        statusCode: error.response.status,
+        statusText: error.response.statusText,
+        timestamp: new Date().toISOString(),
+        headers: error.response.headers,
+        data: typeof error.response.data === 'string' 
+          ? error.response.data.substring(0, 500) // Limit string data to 500 chars
+          : error.response.data,
+        isHtmlResponse: typeof error.response.data === 'string' && error.response.data.includes('<!DOCTYPE html>'),
+        isRailwayError: isRailwayError,
+        requestConfig: {
+          url: error.config?.url,
+          method: error.config?.method,
+          timeout: error.config?.timeout
+        }
+      });
+      
       if (isRailwayError) {
         return res.status(503).json({ 
           error: 'Flask service unavailable on Railway', 
@@ -212,10 +230,19 @@ export const createRawRecord = async (req, res) => {
         ? errorDetails[error.code] 
         : 'No response received from parsing service. The service might be starting up.';
         
-      console.error(`Network error connecting to Flask service: ${error.code || 'unknown'}`, {
-        errorCode: error.code,
+      // Enhanced detailed error logging for outer catch block
+      console.error('Network error connecting to Flask service:', {
+        errorCode: error.code || 'unknown',
+        errorType: error.name,
         errorMessage: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        url: FLASK_SERVICE_CONFIG.URL,
+        requestMethod: error.config?.method,
+        requestHeaders: error.config?.headers,
+        requestData: error.config?.data,
+        requestTimeout: error.config?.timeout,
+        stack: error.stack,
+        rawError: JSON.stringify(error).substring(0, 500) // First 500 chars of stringified error
       });
       
       return res.status(503).json({ 
@@ -226,6 +253,19 @@ export const createRawRecord = async (req, res) => {
         retryRecommended: error.code !== 'ENOTFOUND' // Don't recommend retry for DNS errors
       });
     } else {
+      // Enhanced detailed logging for general errors
+      console.error('Unexpected error in createRawRecord:', {
+        errorType: error.name || typeof error,
+        errorMessage: error.message,
+        timestamp: new Date().toISOString(),
+        rawError: error instanceof Error ? error.stack : JSON.stringify(error),
+        requestInfo: {
+          userId: user_id,
+          dataSize: raw_text ? raw_text.length : 0,
+          date: date
+        }
+      });
+      
       return res.status(500).json({ 
         error: 'Failed to create raw record', 
         details: error.message 
