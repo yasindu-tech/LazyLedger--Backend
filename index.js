@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import recordsRouter from './api/records.js';
 import transactionsRouter from './api/transactions.js';
 import webhookRouter from './api/webhook.js';
+import healthRouter from './api/health.js';
 
 dotenv.config();
 
@@ -23,6 +24,7 @@ app.use(express.json());
 
 app.use('/api/raw-records', recordsRouter);
 app.use('/api/transactions', transactionsRouter);
+app.use('/api/health', healthRouter);
 
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);

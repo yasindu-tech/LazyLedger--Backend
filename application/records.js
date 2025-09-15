@@ -2,6 +2,14 @@ import  pool  from '../infastructure/db.js';
 import express from 'express';
 import axios from 'axios';
 
+// Configuration for Flask service connection
+const FLASK_SERVICE_CONFIG = {
+  URL: 'https://lazyledger-parser-production.up.railway.app/parse-text',
+  TIMEOUT_MS: 120000, // 2 minutes
+  MAX_RETRIES: 3,
+  RETRY_DELAY_BASE_MS: 2000, // Base delay for exponential backoff
+};
+
 export const getAllRawRecords = async (req,res) => {
     try {
         const query = 'SELECT * FROM raw_entries';
@@ -30,24 +38,52 @@ export const createRawRecord = async (req, res) => {
     const rawEntry = rawInsert.rows[0];
 
     console.log('Calling Flask service for text parsing...');
-    console.log('Flask service URL: https://lazyledger-parser-production.up.railway.app/parse-text');
+    console.log(`Flask service URL: ${FLASK_SERVICE_CONFIG.URL}`);
     console.log('Request payload size:', JSON.stringify({ raw_text, date }).length, 'bytes');
     console.log('Current time:', new Date().toISOString());
     
-    // Call Flask service with extended timeout (2 minutes) to handle cold start
-    const flaskRes = await axios.post('https://lazyledger-parser-production.up.railway.app/parse-text', 
-      { raw_text, date }, 
-      { 
-        timeout: 120000, // 2 minutes timeout
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+    // Implement retry mechanism for Flask service
+    const MAX_RETRIES = FLASK_SERVICE_CONFIG.MAX_RETRIES;
+    let retryCount = 0;
+    let flaskRes;
     
-    console.log('Flask service responded with status:', flaskRes.status);
-    console.log('Response data type:', typeof flaskRes.data);
-    console.log('Response data preview:', JSON.stringify(flaskRes.data).substring(0, 200));
+    while (retryCount < MAX_RETRIES) {
+      try {
+        console.log(`Attempt ${retryCount + 1} of ${MAX_RETRIES} to call Flask service...`);
+        
+        // Call Flask service with configured timeout
+        flaskRes = await axios.post(FLASK_SERVICE_CONFIG.URL, 
+          { raw_text, date }, 
+          { 
+            timeout: FLASK_SERVICE_CONFIG.TIMEOUT_MS,
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        // If we get here, the request was successful
+        console.log('Flask service responded with status:', flaskRes.status);
+        console.log('Response data type:', typeof flaskRes.data);
+        console.log('Response data preview:', JSON.stringify(flaskRes.data).substring(0, 200));
+        
+        // Break out of retry loop on success
+        break;
+      } catch (err) {
+        retryCount++;
+        
+        // If it's a connection reset or network error and we have retries left
+        if ((err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || !err.response) && retryCount < MAX_RETRIES) {
+          const delayMs = FLASK_SERVICE_CONFIG.RETRY_DELAY_BASE_MS * retryCount; // Exponential backoff
+          console.log(`Connection error: ${err.code || 'network error'}. Retrying in ${delayMs/1000}s...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+        
+        // If we've exhausted retries or it's another type of error, throw it to be caught by the outer try/catch
+        throw err;
+      }
+    }
     if (flaskRes.status !== 200) {
       return res.status(500).json({ error: 'Failed to process text with Flask service' });
     }
@@ -96,6 +132,13 @@ export const createRawRecord = async (req, res) => {
         details: 'The parsing service took too long to respond. This might be due to cold start. Please try again.',
         timeout: true
       });
+    } else if (error.code === 'ECONNRESET') {
+      // Handle connection reset errors specifically
+      return res.status(503).json({ 
+        error: 'Connection to Flask service was reset', 
+        details: 'The connection to the parsing service was unexpectedly closed. This could be due to network issues or the service restarting. Please try again in a moment.',
+        connectionReset: true
+      });
     } else if (error.response) {
       // Check for rate limiting (429 Too Many Requests)
       if (error.response.status === 429) {
@@ -140,9 +183,31 @@ export const createRawRecord = async (req, res) => {
         });
       }
     } else if (error.request) {
-      return res.status(500).json({ 
+      // More detailed network error handling
+      const errorDetails = {
+        ECONNRESET: 'Connection was reset. The service might have restarted.',
+        ETIMEDOUT: 'Connection timed out. The service might be under heavy load.',
+        ECONNREFUSED: 'Connection refused. The service might be down.',
+        ENOTFOUND: 'DNS lookup failed. Check if the service URL is correct.',
+        ESOCKETTIMEDOUT: 'Socket timeout. The connection took too long to establish.'
+      };
+      
+      const errorDetail = error.code && errorDetails[error.code] 
+        ? errorDetails[error.code] 
+        : 'No response received from parsing service. The service might be starting up.';
+        
+      console.error(`Network error connecting to Flask service: ${error.code || 'unknown'}`, {
+        errorCode: error.code,
+        errorMessage: error.message,
+        timestamp: new Date().toISOString()
+      });
+      
+      return res.status(503).json({ 
         error: 'Failed to connect to Flask service', 
-        details: 'No response received from parsing service. The service might be starting up.' 
+        details: errorDetail,
+        errorCode: error.code,
+        networkError: true,
+        retryRecommended: error.code !== 'ENOTFOUND' // Don't recommend retry for DNS errors
       });
     } else {
       return res.status(500).json({ 
