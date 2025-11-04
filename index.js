@@ -1,14 +1,22 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+<<<<<<< HEAD
 import { json } from 'express';
 import { postToFlaskWithRetry, axiosErrorInfo } from './application/flaskClient.js';
-dotenv.config();
+=======
+import recordsRouter from './api/records.js';
+import transactionsRouter from './api/transactions.js';
+import webhookRouter from './api/webhook.js';
+import healthRouter from './api/health.js';
 
+>>>>>>> origin/main
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+<<<<<<< HEAD
 const corsOptions = {
     origin: function(origin, cb) {
         const allowed = [
@@ -33,8 +41,20 @@ app.use(cors(corsOptions));
 // Ensure preflight OPTIONS requests get handled and return CORS headers
 app.options('*', cors(corsOptions));
 app.use(json()); 
+=======
+app.use(cors({
+    origin: 'https://lazy-ledger-frontend.vercel.app', 
+    credentials: true, 
+}));
+>>>>>>> origin/main
 
+// Use raw body for webhooks (before JSON parsing)
+app.use('/api/webhook', express.raw({ type: 'application/json' }), webhookRouter);
 
+// Use JSON parsing for other routes
+app.use(express.json()); 
+
+<<<<<<< HEAD
 // API routers are imported dynamically after the server starts to avoid
 // pulling in modules that establish DB connections during startup.
 
@@ -53,6 +73,14 @@ app.get('/debug/probe-flask', async (req, res) => {
 
 app.listen(PORT,() => {
     console.log(`Server is running on port http://localhost:${PORT}`);
+=======
+app.use('/api/raw-records', recordsRouter);
+app.use('/api/transactions', transactionsRouter);
+app.use('/api/health', healthRouter);
+
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+>>>>>>> origin/main
 });
 
 // Dynamically import and mount API routers so DB connection issues won't
