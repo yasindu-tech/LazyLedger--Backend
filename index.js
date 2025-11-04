@@ -9,10 +9,29 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors({
-    origin: 'https://lazy-ledger-frontend.vercel.app', 
-    credentials: true, 
-}));
+const corsOptions = {
+    origin: function(origin, cb) {
+        const allowed = [
+            'https://lazy-ledger-frontend.vercel.app',
+            'http://localhost:3000',
+            'http://127.0.0.1:3000'
+        ];
+        // Allow requests with no origin (like curl, some bots)
+        if (!origin) return cb(null, true);
+        if (allowed.indexOf(origin) !== -1) {
+            cb(null, true);
+        } else {
+            cb(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+    allowedHeaders: ['Content-Type','Authorization','X-Requested-With','X-Request-Id']
+};
+
+app.use(cors(corsOptions));
+// Ensure preflight OPTIONS requests get handled and return CORS headers
+app.options('*', cors(corsOptions));
 app.use(json()); 
 
 

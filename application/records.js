@@ -24,62 +24,18 @@ export const createRawRecord = async (req, res) => {
   }
 
   try {
-    const rawInsert = await pool.query(
-      'INSERT INTO raw_entries (user_id, date, raw_text) VALUES ($1, $2, $3) RETURNING *',
-      [user_id, date, raw_text]
-    );
-    const rawEntry = rawInsert.rows[0];
-
-    // Generate a request id for tracing through services
+    // Proxy the create request to Flask which will handle inserting raw_entries and transactions
     const reqId = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random().toString(36).slice(2,8));
     let flaskRes;
     try {
-      flaskRes = await postToFlaskWithRetry('/parse-text', { raw_text, date }, { maxRetries: 4, baseDelay: 500, timeout: 60000, headers: { 'X-Request-Id': reqId } });
+      flaskRes = await postToFlaskWithRetry('/raw-records/create', { user_id, date, raw_text }, { maxRetries: 4, baseDelay: 500, timeout: 60000, headers: { 'X-Request-Id': reqId } });
     } catch (err) {
-      // log the full axios error info plus our request id for correlation
-      console.error('Final failure calling Flask service:', { reqId, info: axiosErrorInfo(err) });
-      // Return a clear status to the client with a request id they can quote when reporting
+      console.error('Final failure calling Flask create endpoint:', { reqId, info: axiosErrorInfo(err) });
       return res.status(502).json({ error: 'Connection to Flask service failed', request_id: reqId });
     }
 
-    if (flaskRes.status !== 200) {
-      console.error('Flask returned non-200:', { status: flaskRes.status, data: flaskRes.data, reqId });
-      return res.status(502).json({ error: 'Flask service returned an error', request_id: reqId });
-    }
-
-    const parsedTransactions = flaskRes.data;
-
-    if (!Array.isArray(parsedTransactions) || parsedTransactions.length === 0) {
-      return res.status(400).json({ error: 'No transactions found in the raw text' });
-    }
-
-    const savedTransactions = [];
-
-    for (const transaction of parsedTransactions) {
-      const { amount, type, category, date: txnDate } = transaction;
-
-      if (!amount || !type || !category || !txnDate) {
-        continue;
-      }
-
-      try {
-        const insertQuery = `
-          INSERT INTO transactions (user_id, amount, type, category, date)
-          VALUES ($1, $2, $3, $4, $5)
-          RETURNING *`;
-        const insertValues = [user_id, amount, type.toUpperCase(), category, txnDate];
-        const txnResult = await pool.query(insertQuery, insertValues);
-        savedTransactions.push(txnResult.rows[0]);
-      } catch (err) {
-        console.error('DB insert error:', { transaction, err });
-      }
-    }
-
-    return res.status(201).json({
-      message: 'Raw record and transactions saved successfully',
-      raw_entry: rawEntry,
-      transactions: savedTransactions,
-    });
+    // Forward Flask's response status and body
+    return res.status(flaskRes.status).json(flaskRes.data);
 
   } catch (error) {
     console.error('Error creating raw record:', error);
