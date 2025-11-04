@@ -1,7 +1,7 @@
 import  pool  from '../infastructure/db.js';
-import express from 'express';
-import axios from 'axios';
+import { postToFlaskWithRetry, axiosErrorInfo } from './flaskClient.js';
 
+// flask client helpers are in ./flaskClient.js so importing this file doesn't pull DB code into callers
 export const getAllRawRecords = async (req,res) => {
     try {
         const query = 'SELECT * FROM raw_entries';
@@ -29,10 +29,19 @@ export const createRawRecord = async (req, res) => {
     );
     const rawEntry = rawInsert.rows[0];
 
-    const flaskRes = await axios.post('https://lazyledger-parser.onrender.com/parse-text', { raw_text, date });
-    if (flaskRes.status !== 200) {
-      return res.status(500).json({ error: 'Failed to process text with Flask service' });
-    }
+   let flaskRes;
+          try {
+            flaskRes = await postToFlaskWithRetry('/parse-text', { raw_text, date });
+          } catch (err) {
+            console.error('Final failure calling Flask service:', axiosErrorInfo(err));
+            // Return a clear status to the client
+            return res.status(502).json({ error: 'Connection to Flask service failed' });
+          }
+
+          if (flaskRes.status !== 200) {
+            console.error('Flask returned non-200:', { status: flaskRes.status, data: flaskRes.data });
+            return res.status(502).json({ error: 'Flask service returned an error' });
+          }
 
     const parsedTransactions = flaskRes.data;
 
