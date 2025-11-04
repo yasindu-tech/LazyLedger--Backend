@@ -76,8 +76,4 @@ app.listen(PORT, () => {
     console.error('Failed to import/mount API routers:', err);
   }
 })();
-import express from 'express';
 
-import cors from 'cors';
-
-import dotenv from 'dotenv';
