@@ -1,17 +1,16 @@
 import axios from 'axios';
 import https from 'https';
 
-// configured axios instance for Flask service
+// axios instance for Flask parser
 export const flaskAxios = axios.create({
   baseURL: 'https://lazyledger-parser.onrender.com',
-  timeout: 30000, // 30s
+  timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
   httpsAgent: new https.Agent({ keepAlive: true, rejectUnauthorized: true }),
   maxContentLength: 50 * 1024 * 1024,
   maxBodyLength: 50 * 1024 * 1024
 });
 
-// helper to format axios errors
 export function axiosErrorInfo(err) {
   return {
     message: err.message,
@@ -27,11 +26,16 @@ export function axiosErrorInfo(err) {
     },
     responseStatus: err.response?.status,
     responseData: err.response?.data,
-    requestHeaders: err.request?.getHeaders ? err.request.getHeaders() : err.request?.headers
+    request: (() => {
+      try {
+        if (!err.request) return undefined;
+        if (err.request.getHeaders) return { headers: err.request.getHeaders() };
+        return { _raw: String(err.request).slice(0, 200) };
+      } catch (e) { return { error: 'failed to serialize request' }; }
+    })()
   };
 }
 
-// simple retry with exponential backoff for network/transient errors
 export async function postToFlaskWithRetry(path, payload, { maxRetries = 2, baseDelay = 500 } = {}) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -42,7 +46,6 @@ export async function postToFlaskWithRetry(path, payload, { maxRetries = 2, base
       const status = err.response?.status;
       console.error('Flask request error:', axiosErrorInfo(err));
 
-      // retry on network errors or 429/502/503/504 gateway issues
       if (isNetwork || [429, 502, 503, 504].includes(status)) {
         if (attempt < maxRetries) {
           const wait = Math.pow(2, attempt) * baseDelay;
@@ -51,7 +54,6 @@ export async function postToFlaskWithRetry(path, payload, { maxRetries = 2, base
           continue;
         }
       }
-      // otherwise rethrow so caller can handle/fail
       throw err;
     }
   }
