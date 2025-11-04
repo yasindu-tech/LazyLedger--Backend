@@ -36,19 +36,35 @@ export function axiosErrorInfo(err) {
   };
 }
 
-export async function postToFlaskWithRetry(path, payload, { maxRetries = 2, baseDelay = 500 } = {}) {
+export async function postToFlaskWithRetry(path, payload, { maxRetries = 4, baseDelay = 500, headers = {}, timeout } = {}) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const res = await flaskAxios.post(path, payload);
+      const res = await flaskAxios.post(path, payload, { headers, timeout });
       return res;
     } catch (err) {
-      const isNetwork = !!err.code && !err.response;
+      // consider connection resets explicitly retryable
+      let isNetwork = !!err.code && !err.response;
+      if (err.code === 'ECONNRESET' || err.code === 'EPIPE') isNetwork = true;
       const status = err.response?.status;
-      console.error('Flask request error:', axiosErrorInfo(err));
 
+      // helpful debug: log proxy envs (if present) on first failure
+      if (attempt === 0) {
+        console.info('Outbound proxy envs:', {
+          HTTP_PROXY: process.env.HTTP_PROXY || process.env.http_proxy,
+          HTTPS_PROXY: process.env.HTTPS_PROXY || process.env.https_proxy,
+          NO_PROXY: process.env.NO_PROXY || process.env.no_proxy
+        });
+      }
+
+      console.error('Flask request error (attempt=' + attempt + '):', axiosErrorInfo(err));
+
+      // retry on network errors or common gateway throttles
       if (isNetwork || [429, 502, 503, 504].includes(status)) {
         if (attempt < maxRetries) {
-          const wait = Math.pow(2, attempt) * baseDelay;
+          // exponential backoff with small jitter
+          const base = Math.pow(2, attempt) * baseDelay;
+          const jitter = Math.floor(base * (0.4 + Math.random() * 0.8));
+          const wait = Math.max(100, Math.floor(base + jitter));
           console.info(`Retrying Flask request attempt=${attempt + 1} after ${wait}ms`);
           await new Promise(r => setTimeout(r, wait));
           continue;
