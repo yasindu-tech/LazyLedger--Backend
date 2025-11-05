@@ -90,12 +90,16 @@ app.listen(PORT, () => {
     console.log('Importing ./api/webhook.js');
     const webhookMod = await import('./api/webhook.js');
     console.log('Imported webhook');
+  console.log('Importing ./api/insights.js');
+  const insightsMod = await import('./api/insights.js');
+  console.log('Imported insights');
     console.log('Importing ./api/health.js');
     const healthMod = await import('./api/health.js');
     console.log('Imported health');
 
     app.use('/api/raw-records', recordsMod.default);
     app.use('/api/transactions', transactionsMod.default);
+  app.use('/api/insights', insightsMod.default);
     app.use('/api/health', healthMod.default);
     // webhook needs raw body parsing, mount with the raw middleware
     app.use('/api/webhook', express.raw({ type: 'application/json' }), webhookMod.default);
