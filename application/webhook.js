@@ -24,9 +24,10 @@ export const webhookHandler = async (req, res) => {
                 return res.status(400).send('Missing required user data');
             }
             
+            // Use upsert so repeated webhooks update the record instead of failing silently
             const query = `INSERT INTO users (user_id, first_name, last_name, email) 
                            VALUES ($1, $2, $3, $4)
-                           ON CONFLICT (user_id) DO NOTHING`;
+                           ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, email = EXCLUDED.email RETURNING *`;
             const values = [
                 id, 
                 first_name || '', 
@@ -35,12 +36,21 @@ export const webhookHandler = async (req, res) => {
             ];
             
             try {
-                await pool.query(query, values);
-                console.log('User created successfully:', id);
-                res.status(200).send('User created successfully');
+                const result = await pool.query(query, values);
+                console.log('User upserted successfully:', id, { row: result.rows[0] });
+                res.status(200).send('User created/updated successfully');
             } catch (err) {
-                console.error('Error inserting user:', err);
-                res.status(500).send('Database error');
+                console.error('Error inserting/updating user:', {
+                    message: err.message,
+                    code: err.code,
+                    detail: err.detail,
+                    hint: err.hint,
+                    stack: err.stack,
+                    query: query,
+                    values: values
+                });
+                // Return minimal info but include an error code for debugging
+                return res.status(500).json({ error: 'Database error', code: err.code, message: err.message });
             }
             
         } else if (event.type === 'user.updated') {
