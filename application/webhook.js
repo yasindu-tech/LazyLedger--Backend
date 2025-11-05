@@ -24,14 +24,18 @@ export const webhookHandler = async (req, res) => {
                 return res.status(400).send('Missing required user data');
             }
             
-            // Use upsert so repeated webhooks update the record instead of failing silently
-            const query = `INSERT INTO users (user_id, first_name, last_name, email) 
+            // Use upsert so repeated webhooks update the record instead of failing silently.
+            // Clerk/third-party IDs are strings (e.g. "user_..."), while our
+            // existing `users.user_id` may be an integer primary key. To avoid
+            // type errors we store the external ID in `clerk_id` (text).
+            // Migration must add clerk_id (text) and a unique index on it.
+            const query = `INSERT INTO users (clerk_id, first_name, last_name, email) 
                            VALUES ($1, $2, $3, $4)
-                           ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, email = EXCLUDED.email RETURNING *`;
+                           ON CONFLICT (clerk_id) DO UPDATE SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, email = EXCLUDED.email RETURNING *`;
             const values = [
-                id, 
-                first_name || '', 
-                last_name || '', 
+                id,
+                first_name || '',
+                last_name || '',
                 email_addresses[0].email_address
             ];
             
@@ -54,7 +58,7 @@ export const webhookHandler = async (req, res) => {
             }
             
         } else if (event.type === 'user.updated') {
-            const { id, first_name, last_name, email_addresses } = event.data;
+              const { id, first_name, last_name, email_addresses } = event.data;
 
             // Validate required fields
             if (!id) {
@@ -62,9 +66,10 @@ export const webhookHandler = async (req, res) => {
                 return res.status(400).send('Missing user ID');
             }
 
+            // Update by clerk_id (external id string)
             const query = `UPDATE users 
                            SET first_name = $1, last_name = $2, email = $3 
-                           WHERE user_id = $4`;
+                           WHERE clerk_id = $4`;
             const values = [
                 first_name || '', 
                 last_name || '', 
@@ -82,7 +87,7 @@ export const webhookHandler = async (req, res) => {
             }
             
         } else if (event.type === 'user.deleted') {
-            const { id } = event.data;
+              const { id } = event.data;
 
             // Validate required fields
             if (!id) {
@@ -90,7 +95,8 @@ export const webhookHandler = async (req, res) => {
                 return res.status(400).send('Missing user ID');
             }
 
-            const query = `DELETE FROM users WHERE user_id = $1`;
+            // Delete by clerk_id (external id string)
+            const query = `DELETE FROM users WHERE clerk_id = $1`;
             const values = [id];
             
             try {
