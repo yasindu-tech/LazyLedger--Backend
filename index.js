@@ -27,7 +27,14 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+// Handle preflight OPTIONS requests for any path without registering a problematic route
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    // run CORS middleware to set headers, then end the request with 204
+    return cors(corsOptions)(req, res, () => res.sendStatus(204));
+  }
+  return next();
+});
 
 // JSON parsing for regular endpoints
 app.use(express.json());
