@@ -36,8 +36,31 @@ app.use((req, res, next) => {
   return next();
 });
 
-// JSON parsing for regular endpoints
-app.use(express.json());
+// Lightweight probe middleware for webhook delivery troubleshooting.
+// This logs any incoming request to /api/webhook early (before routers are dynamically mounted)
+// so we can tell whether external webhooks reach the Express process at all.
+app.use('/api/webhook', (req, res, next) => {
+  try {
+    console.log('[webhook-probe] incoming', req.method, req.originalUrl, {
+      contentType: req.headers['content-type'] || null,
+      svixId: req.headers['svix-id'] || null,
+      remoteAddr: req.ip || req.connection?.remoteAddress || null
+    });
+  } catch (e) {
+    // Never throw from probe logging
+    console.error('[webhook-probe] logging failed', e && e.message);
+  }
+  return next();
+});
+
+// JSON parsing for regular endpoints — skip parsing for webhook paths so
+// the route-level `express.raw()` can read the raw body for signature verification.
+app.use((req, res, next) => {
+  if (req.path && req.path.startsWith('/api/webhook')) {
+    return next();
+  }
+  return express.json()(req, res, next);
+});
 
 // DEBUG endpoint - small probe to validate connectivity to the Flask parser service
 app.get('/debug/probe-flask', async (req, res) => {
