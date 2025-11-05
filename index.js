@@ -48,32 +48,31 @@ app.listen(PORT, () => {
   console.log(`Server is running on port http://localhost:${PORT}`);
 });
 
-// Dynamically import and mount API routers so DB connection issues won't
-// prevent the debug endpoint from being reachable. Errors importing routers
-// will be logged but won't crash the server.
+// Import routers sequentially and log progress to make startup failures easier to trace
 (async () => {
   try {
-    const [
-      { default: recordsRouter },
-      { default: transactionsRouter },
-      { default: webhookRouter },
-      { default: healthRouter }
-    ] = await Promise.all([
-      import('./api/records.js'),
-      import('./api/transactions.js'),
-      import('./api/webhook.js'),
-      import('./api/health.js')
-    ]);
+    console.log('Importing ./api/records.js');
+    const recordsMod = await import('./api/records.js');
+    console.log('Imported records');
+    console.log('Importing ./api/transactions.js');
+    const transactionsMod = await import('./api/transactions.js');
+    console.log('Imported transactions');
+    console.log('Importing ./api/webhook.js');
+    const webhookMod = await import('./api/webhook.js');
+    console.log('Imported webhook');
+    console.log('Importing ./api/health.js');
+    const healthMod = await import('./api/health.js');
+    console.log('Imported health');
 
-    app.use('/api/raw-records', recordsRouter);
-    app.use('/api/transactions', transactionsRouter);
-    app.use('/api/health', healthRouter);
+    app.use('/api/raw-records', recordsMod.default);
+    app.use('/api/transactions', transactionsMod.default);
+    app.use('/api/health', healthMod.default);
     // webhook needs raw body parsing, mount with the raw middleware
-    app.use('/api/webhook', express.raw({ type: 'application/json' }), webhookRouter);
+    app.use('/api/webhook', express.raw({ type: 'application/json' }), webhookMod.default);
 
-    console.log('API routers mounted');
+    console.log('API routers mounted (sequential)');
   } catch (err) {
-    console.error('Failed to import/mount API routers:', err);
+    console.error('Failed to import/mount API routers (sequential):', err);
   }
 })();
 
