@@ -31,32 +31,45 @@ export const createRawRecord = async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields. Expect user_id or clerk_id, date and raw_text' });
   }
 
-  // Resolve numeric internal user_id if clerk_id provided
+  // Resolve numeric internal user_id if clerk_id provided. Accept these cases:
+  // - `clerk_id` provided explicitly
+  // - `user_id` is numeric
+  // - `user_id` is a non-numeric string (treat as clerk_id)
   let numericUserId = null;
   try {
-    if (clerk_id) {
+    let effectiveClerkId = clerk_id;
+    let providedUserId = user_id;
+
+    // If user_id is present but non-numeric, treat it as clerk_id for backward compatibility
+    if (!effectiveClerkId && providedUserId && typeof providedUserId === 'string' && /\D/.test(providedUserId)) {
+      effectiveClerkId = providedUserId;
+      providedUserId = undefined;
+      console.log('Interpreting non-numeric user_id as clerk_id:', effectiveClerkId);
+    }
+
+    if (effectiveClerkId) {
       // Try to find an existing user by clerk_id
-      const sel = await pool.query('SELECT user_id FROM users WHERE clerk_id = $1 LIMIT 1', [clerk_id]);
+      const sel = await pool.query('SELECT user_id FROM users WHERE clerk_id = $1 LIMIT 1', [effectiveClerkId]);
       if (sel.rowCount > 0) {
         numericUserId = sel.rows[0].user_id;
       } else {
         // Insert a lightweight user row with clerk_id so we have an internal id to associate
         const ins = await pool.query(
           'INSERT INTO users (clerk_id, first_name, last_name, email) VALUES ($1, $2, $3, $4) RETURNING user_id',
-          [clerk_id, '', '', '']
+          [effectiveClerkId, '', '', '']
         );
         numericUserId = ins.rows[0].user_id;
-        console.log('Created placeholder user for clerk_id', clerk_id, '=> user_id', numericUserId);
+        console.log('Created placeholder user for clerk_id', effectiveClerkId, '=> user_id', numericUserId);
       }
     } else {
       // Accept numeric user_id provided directly
-      numericUserId = Number(user_id);
+      numericUserId = Number(providedUserId);
       if (Number.isNaN(numericUserId)) {
         return res.status(400).json({ error: 'Invalid numeric user_id' });
       }
     }
   } catch (err) {
-    console.error('Error resolving user id from clerk_id:', { clerk_id, err });
+    console.error('Error resolving user id from clerk_id/user_id:', { clerk_id, user_id, err });
     return res.status(500).json({ error: 'Failed to resolve user id', details: err.message });
   }
 
